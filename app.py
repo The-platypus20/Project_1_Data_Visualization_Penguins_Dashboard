@@ -4,6 +4,15 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
+import os
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.preprocessing import LabelEncoder
 
 # --- PAGE CONFIGURATION ---
 # Set the page title and layout to 'wide' to utilize the full screen width
@@ -13,8 +22,9 @@ st.set_page_config(page_title="Penguin Dashboard", layout="wide")
 # Using streamlit's cache decorator to prevent reloading data on every user interaction
 @st.cache_data
 def load_data():
-    # Ensure the path matches your local directory structure
-    path = '/Users/anngothesoloist/Project_1_Data_Visualization_Penguins_Dashboard/data/penguins_clean.csv'
+    # Use relative path for cross-platform compatibility
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(current_dir, 'data', 'penguins_preprocessed.csv')
     return pd.read_csv(path)
 
 # Initialize the raw dataset
@@ -66,7 +76,7 @@ if df.empty:
 
 # --- NAVIGATION TABS ---
 # Organize charts into tabs to avoid a cluttered single-page view
-tab1, tab2, tab3, tab4 = st.tabs(["Distributions", "Correlations", "Counts & Comparison", "3D Analysis"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Distributions", "Correlations", "Counts & Comparison", "3D Analysis", "Machine Learning"])
 
 # --- TAB 1: DISTRIBUTIONS ---
 with tab1:
@@ -166,3 +176,87 @@ with tab4:
         legend=dict(yanchor="top", y=0.9, xanchor="center", x=0.05, bgcolor="rgba(255, 255, 255, 0.5)")
     )
     st.plotly_chart(fig8, use_container_width=True)
+
+# --- TAB 5: MACHINE LEARNING ---
+with tab5:
+    st.header("Machine Learning Analysis")
+
+    # Prepare data for ML
+    features = ['Culmen Length (mm)', 'Culmen Depth (mm)', 'Flipper Length (mm)', 'Body Mass (g)', 'Delta 15 N (o/oo)', 'Delta 13 C (o/oo)']
+    X = df[features].copy()
+    X.fillna(X.mean(), inplace=True)
+
+    # Scale the features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    # K-Means Clustering
+    st.subheader("K-Means Clustering with PCA")
+    kmeans = KMeans(n_clusters=3, random_state=42, n_init='auto')
+    df['Cluster'] = kmeans.fit_predict(X_scaled)
+
+    # PCA
+    pca = PCA(n_components=2)
+    X_pca = pca.fit_transform(X_scaled)
+    df['PCA1'] = X_pca[:, 0]
+    df['PCA2'] = X_pca[:, 1]
+
+    fig_ml1 = px.scatter(df, x='PCA1', y='PCA2', color='Cluster',
+                         title='K-Means Clustering (PCA-reduced)',
+                         color_continuous_scale='viridis')
+    fig_ml1.update_layout(
+        xaxis_title=f'Principal Component 1 ({pca.explained_variance_ratio_[0]*100:.2f}%)',
+        yaxis_title=f'Principal Component 2 ({pca.explained_variance_ratio_[1]*100:.2f}%)'
+    )
+    st.plotly_chart(fig_ml1, use_container_width=True)
+
+    # t-SNE
+    st.subheader("t-SNE Visualization")
+    tsne = TSNE(n_components=2, perplexity=30, n_iter=300, random_state=42, learning_rate='auto', init='random')
+    X_tsne = tsne.fit_transform(X_scaled)
+    df['TSNE1'] = X_tsne[:, 0]
+    df['TSNE2'] = X_tsne[:, 1]
+
+    fig_ml2 = px.scatter(df, x='TSNE1', y='TSNE2', color='Species',
+                         title='t-SNE Visualization (Colored by Species)',
+                         color_discrete_map=COLORS)
+    st.plotly_chart(fig_ml2, use_container_width=True)
+
+    # Random Forest Classification
+    st.subheader("Random Forest Classification")
+    X_clf = X.copy()
+    y_clf = df['Species'].copy()
+    label_encoder = LabelEncoder()
+    y_encoded = label_encoder.fit_transform(y_clf)
+
+    X_train, X_test, y_train, y_test = train_test_split(X_clf, y_encoded, test_size=0.3, random_state=42, stratify=y_encoded)
+    scaler_clf = StandardScaler()
+    X_train_scaled = scaler_clf.fit_transform(X_train)
+    X_test_scaled = scaler_clf.transform(X_test)
+
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_train_scaled, y_train)
+    y_pred = model.predict(X_test_scaled)
+
+    accuracy = accuracy_score(y_test, y_pred)
+    st.write(f"**Model Accuracy:** {accuracy:.2f}")
+
+    st.write("**Classification Report:**")
+    report = classification_report(y_test, y_pred, target_names=label_encoder.classes_, output_dict=True)
+    st.dataframe(pd.DataFrame(report).transpose())
+
+    st.write("**Confusion Matrix:**")
+    conf_mat = confusion_matrix(y_test, y_pred)
+    st.dataframe(pd.DataFrame(conf_mat, index=label_encoder.classes_, columns=label_encoder.classes_))
+
+    # Feature Importances
+    st.subheader("Feature Importances")
+    importances = model.feature_importances_
+    feature_names = X_clf.columns
+    forest_importances = pd.Series(importances, index=feature_names)
+
+    fig_ml3 = px.bar(forest_importances.reset_index(), x='index', y=0,
+                     title='Feature Importances',
+                     labels={'index': 'Feature', 0: 'Importance'})
+    fig_ml3.update_layout(xaxis_tickangle=-45)
+    st.plotly_chart(fig_ml3, use_container_width=True)
