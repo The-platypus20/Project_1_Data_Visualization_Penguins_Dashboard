@@ -195,7 +195,14 @@ with tab5:
     st.header("Machine Learning Analysis")
 
     # Prepare data for ML
-    features = ['Culmen Length (mm)', 'Culmen Depth (mm)', 'Flipper Length (mm)', 'Body Mass (g)', 'Delta 15 N (o/oo)', 'Delta 13 C (o/oo)']
+    features = [
+    'bill_length_mm',
+    'bill_depth_mm',
+    'flipper_length_mm',
+    'body_mass_g',
+    'delta_15_n_o/oo',
+    'delta_13_c_o/oo'
+]
     X = df[features].copy()
     X.fillna(X.mean(), inplace=True)
 
