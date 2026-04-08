@@ -232,7 +232,7 @@ with tab5:
 
     # t-SNE
     st.subheader("t-SNE Visualization")
-    tsne = TSNE(n_components=2, perplexity=30, n_iter=300, random_state=42, learning_rate='auto', init='random')
+    tsne = TSNE(n_components=2, perplexity=30, max_iter=300, random_state=42, learning_rate='auto', init='random')
     X_tsne = tsne.fit_transform(X_scaled)
     df['TSNE1'] = X_tsne[:, 0]
     df['TSNE2'] = X_tsne[:, 1]
