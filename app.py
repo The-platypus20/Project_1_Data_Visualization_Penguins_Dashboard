@@ -29,7 +29,14 @@ def load_data():
 
 # Initialize the raw dataset
 df_raw = load_data()
-df_raw.columns = df_raw.columns.str.lower()
+df_raw.columns = (
+    df_raw.columns
+    .str.strip()
+    .str.lower()
+    .str.replace(" ", "_")
+    .str.replace("(", "")
+    .str.replace(")", "")
+)
 
 # --- THEME & GLOBAL COLOR MAPPING ---
 # Set a consistent white background theme and predefined colors for each penguin species
