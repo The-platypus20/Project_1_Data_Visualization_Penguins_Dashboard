@@ -38,6 +38,11 @@ df_raw.columns = (
     .str.replace(")", "")
 )
 
+df_raw.rename(columns={
+    "culmen_length_mm": "bill_length_mm",
+    "culmen_depth_mm": "bill_depth_mm"
+}, inplace=True)
+
 # --- THEME & GLOBAL COLOR MAPPING ---
 # Set a consistent white background theme and predefined colors for each penguin species
 pio.templates.default = "plotly_white"
