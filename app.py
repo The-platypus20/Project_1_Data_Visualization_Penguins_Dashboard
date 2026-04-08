@@ -237,7 +237,7 @@ with tab5:
     df['TSNE1'] = X_tsne[:, 0]
     df['TSNE2'] = X_tsne[:, 1]
 
-    fig_ml2 = px.scatter(df, x='TSNE1', y='TSNE2', color='Species',
+    fig_ml2 = px.scatter(df, x='TSNE1', y='TSNE2', color='species',
                          title='t-SNE Visualization (Colored by Species)',
                          color_discrete_map=COLORS)
     st.plotly_chart(fig_ml2, use_container_width=True)
@@ -245,7 +245,7 @@ with tab5:
     # Random Forest Classification
     st.subheader("Random Forest Classification")
     X_clf = X.copy()
-    y_clf = df['Species'].copy()
+    y_clf = df['species'].copy()
     label_encoder = LabelEncoder()
     y_encoded = label_encoder.fit_transform(y_clf)
 
