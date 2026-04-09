@@ -287,8 +287,8 @@ fig_elbow = px.line(
     labels={"k": "Number Of Clusters", "inertia": "Inertia"},
 )
 fig_elbow.add_annotation(
-    x=3,
-    y=float(inertia_df.loc[inertia_df["k"] == 3, "inertia"].iloc[0]),
+    x=2,
+    y=float(inert2ia_df.loc[inertia_df["k"] == 2, "inertia"].iloc[0]),
     text="Elbow suggests k=2, but biology points to 3 species.",
     showarrow=True,
     arrowhead=2,
