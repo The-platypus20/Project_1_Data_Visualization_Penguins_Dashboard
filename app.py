@@ -29,6 +29,19 @@ def load_data():
 
 # Initialize the raw dataset
 df_raw = load_data()
+df_raw.columns = (
+    df_raw.columns
+    .str.strip()
+    .str.lower()
+    .str.replace(" ", "_")
+    .str.replace("(", "")
+    .str.replace(")", "")
+)
+
+df_raw.rename(columns={
+    "culmen_length_mm": "bill_length_mm",
+    "culmen_depth_mm": "bill_depth_mm"
+}, inplace=True)
 
 # --- THEME & GLOBAL COLOR MAPPING ---
 # Set a consistent white background theme and predefined colors for each penguin species
@@ -182,7 +195,14 @@ with tab5:
     st.header("Machine Learning Analysis")
 
     # Prepare data for ML
-    features = ['Culmen Length (mm)', 'Culmen Depth (mm)', 'Flipper Length (mm)', 'Body Mass (g)', 'Delta 15 N (o/oo)', 'Delta 13 C (o/oo)']
+    features = [
+    'bill_length_mm',
+    'bill_depth_mm',
+    'flipper_length_mm',
+    'body_mass_g',
+    'delta_15_n_o/oo',
+    'delta_13_c_o/oo'
+]
     X = df[features].copy()
     X.fillna(X.mean(), inplace=True)
 
@@ -212,12 +232,12 @@ with tab5:
 
     # t-SNE
     st.subheader("t-SNE Visualization")
-    tsne = TSNE(n_components=2, perplexity=30, n_iter=300, random_state=42, learning_rate='auto', init='random')
+    tsne = TSNE(n_components=2, perplexity=30, max_iter=300, random_state=42, learning_rate='auto', init='random')
     X_tsne = tsne.fit_transform(X_scaled)
     df['TSNE1'] = X_tsne[:, 0]
     df['TSNE2'] = X_tsne[:, 1]
 
-    fig_ml2 = px.scatter(df, x='TSNE1', y='TSNE2', color='Species',
+    fig_ml2 = px.scatter(df, x='TSNE1', y='TSNE2', color='species',
                          title='t-SNE Visualization (Colored by Species)',
                          color_discrete_map=COLORS)
     st.plotly_chart(fig_ml2, use_container_width=True)
@@ -225,7 +245,7 @@ with tab5:
     # Random Forest Classification
     st.subheader("Random Forest Classification")
     X_clf = X.copy()
-    y_clf = df['Species'].copy()
+    y_clf = df['species'].copy()
     label_encoder = LabelEncoder()
     y_encoded = label_encoder.fit_transform(y_clf)
 
