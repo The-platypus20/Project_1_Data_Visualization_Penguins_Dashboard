@@ -14,8 +14,6 @@ Pipeline stages (auto-executed on startup):
 import warnings
 warnings.filterwarnings("ignore")
 
-from pathlib import Path
-
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -30,7 +28,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 
-from palmerpenguins import load_penguins
+from palmerpenguins import load_penguins_raw
 
 import dash
 from dash import dcc, html, Input, Output, State, callback
@@ -39,31 +37,45 @@ import dash_bootstrap_components as dbc
 print("All libraries imported.")
 
 # STAGE 1: LOAD
-print("[Stage 1] Loading Palmer Penguins dataset")
-preprocessed_path = Path("nam_branch/penguins_preprocessed.csv")
+print("[Stage 1] Loading Palmer Penguins raw dataset")
+species_map = {
+    "Adelie Penguin (Pygoscelis adeliae)": "Adelie",
+    "Gentoo penguin (Pygoscelis papua)": "Gentoo",
+    "Chinstrap penguin (Pygoscelis antarctica)": "Chinstrap",
+}
+raw_column_map = {
+    "Species": "species",
+    "Island": "island",
+    "Culmen Length (mm)": "bill_length_mm",
+    "Culmen Depth (mm)": "bill_depth_mm",
+    "Flipper Length (mm)": "flipper_length_mm",
+    "Body Mass (g)": "body_mass_g",
+    "Sex": "sex",
+    "Delta 15 N (o/oo)": "delta_15",
+    "Delta 13 C (o/oo)": "delta_13",
+    "Date Egg": "date_egg",
+}
+columns_to_drop = [
+    "studyName",
+    "Sample Number",
+    "Region",
+    "Stage",
+    "Individual ID",
+    "Clutch Completion",
+    "Comments",
+]
 
-if preprocessed_path.exists():
-    raw_penguins = pd.read_csv(preprocessed_path)
-    df_raw = pd.DataFrame({
-        "species": raw_penguins["Species"].replace({
-            "Adelie Penguin (Pygoscelis adeliae)": "Adelie",
-            "Gentoo penguin (Pygoscelis papua)": "Gentoo",
-            "Chinstrap penguin (Pygoscelis antarctica)": "Chinstrap",
-        }),
-        "island": raw_penguins["Island"],
-        "bill_length_mm": raw_penguins["Culmen Length (mm)"],
-        "bill_depth_mm": raw_penguins["Culmen Depth (mm)"],
-        "flipper_length_mm": raw_penguins["Flipper Length (mm)"],
-        "body_mass_g": raw_penguins["Body Mass (g)"],
-        "sex": raw_penguins["Sex"].str.lower(),
-        "delta_15": raw_penguins["Delta 15 N (o/oo)"],
-        "delta_13": raw_penguins["Delta 13 C (o/oo)"],
-        "year": pd.to_datetime(raw_penguins["Date Egg"]).dt.year,
-    })
-else:
-    df_raw = load_penguins()
-    df_raw["delta_15"] = np.nan
-    df_raw["delta_13"] = np.nan
+df_raw = (
+    load_penguins_raw()
+    .drop(columns=columns_to_drop, errors="ignore")
+    .rename(columns=raw_column_map)
+    .copy()
+)
+df_raw["species"] = df_raw["species"].replace(species_map)
+df_raw["island"] = df_raw["island"].astype(str).str.strip().str.title()
+df_raw["sex"] = df_raw["sex"].astype(str).str.strip().str.lower().replace({"nan": np.nan})
+df_raw["year"] = pd.to_datetime(df_raw["date_egg"], errors="coerce").dt.year
+df_raw = df_raw.drop(columns=["date_egg"], errors="ignore")
 
 print(f"   Raw shape: {df_raw.shape}  |  Missing values:\n{df_raw.isnull().sum().to_string()}")
 
@@ -74,7 +86,9 @@ numeric_cols = [
     "bill_length_mm",
     "bill_depth_mm",
     "flipper_length_mm",
-    "body_mass_g"
+    "body_mass_g",
+    "delta_15",
+    "delta_13",
 ]
 
 # Drop the 2 rows where ALL numeric measurements are missing
@@ -91,8 +105,11 @@ for col in numeric_cols:
         fill_value = 0.0
     df[col] = df[col].fillna(fill_value)
 
-# Fill sex NA with mode
-df["sex"] = df["sex"].fillna(df["sex"].mode()[0])
+# Fill key categoricals after standardizing the raw labels
+df["species"] = df["species"].fillna("Unknown")
+df["island"] = df["island"].fillna("Unknown")
+sex_mode = df["sex"].mode()
+df["sex"] = df["sex"].fillna(sex_mode.iloc[0] if not sex_mode.empty else "unknown")
 
 print(f"   Clean shape: {df.shape}  |  Remaining NAs: {df.isnull().sum().sum()}")
 
@@ -288,7 +305,7 @@ fig_elbow = px.line(
 )
 fig_elbow.add_annotation(
     x=2,
-    y=float(inert2ia_df.loc[inertia_df["k"] == 2, "inertia"].iloc[0]),
+    y=float(inertia_df.loc[inertia_df["k"] == 2, "inertia"].iloc[0]),
     text="Elbow suggests k=2, but biology points to 3 species.",
     showarrow=True,
     arrowhead=2,
@@ -619,33 +636,6 @@ def build_ml_species_alignment_figure(color_mode):
     return apply_figure_theme(fig, 420)
 
 
-def build_ml_interactive_figure(species=None, islands=None, compare_mode="cluster_k3"):
-    dff = df.copy()
-    if species:
-        dff = dff[dff["species"].isin(species)]
-    if islands:
-        dff = dff[dff["island"].isin(islands)]
-
-    title_prefix = "K=2 merges species structure" if compare_mode == "cluster_k2" else "K=3 keeps species structure visible"
-
-    if compare_mode == "cluster_k2":
-        color_map = CLUSTER_COLORS_2
-    else:
-        color_map = CLUSTER_COLORS_3
-
-    fig = px.scatter(
-        dff,
-        x="PCA1",
-        y="PCA2",
-        color=compare_mode,
-        symbol="species",
-        color_discrete_map=color_map,
-        title=f"{title_prefix} ({len(dff)} penguins shown)",
-        labels={"PCA1": f"PC1 ({var1:.1f}%)", "PCA2": f"PC2 ({var2:.1f}%)"},
-        hover_data=["species", "island"],
-    )
-    fig.update_traces(marker=dict(size=10, opacity=0.85, line=dict(width=0.5, color="white")))
-    return apply_figure_theme(fig, 460)
 for figure in [
     fig_species_bar,
     fig_island_bar,
@@ -890,58 +880,46 @@ def render_tab(tab):
                 ), md=6),
             ], className="g-4 mb-4"),
             html.Div([
-                html.P("Section 4", style=SECTION_LABEL),
-                html.H4("Interactive exploration", style={"fontWeight": "700", "fontSize": "22px", "color": TEXT_DARK, "marginBottom": "6px"}),
+                html.P("Classification report", style=SECTION_LABEL),
+                html.H4("How well the classifier performs", style={
+                    "fontWeight": "700",
+                    "fontSize": "22px",
+                    "color": TEXT_DARK,
+                    "marginBottom": "6px",
+                }),
                 html.P(
-                    "Filtering affects visualization only; models remain fixed for consistency.",
-                    style={**MUTED, "marginBottom": "18px"},
+                    "Precision, recall, and F1 stay strong across species, which supports the same separation seen in the charts.",
+                    style={**MUTED, "marginBottom": "16px"},
                 ),
-                dbc.Row([
-                    dbc.Col([
-                        html.Label("Species", style=CONTROL_LABEL),
-                        dcc.Dropdown(
-                            id="ml-filter-species",
-                            options=[{"label": s, "value": s} for s in sorted(df["species"].unique())],
-                            multi=True,
-                            placeholder="All species",
-                        ),
-                    ], md=4),
-                    dbc.Col([
-                        html.Label("Island", style=CONTROL_LABEL),
-                        dcc.Dropdown(
-                            id="ml-filter-island",
-                            options=[{"label": i, "value": i} for i in sorted(df["island"].unique())],
-                            multi=True,
-                            placeholder="All islands",
-                        ),
-                    ], md=4),
-                    dbc.Col([
-                        html.Label("Compare", style=CONTROL_LABEL),
-                        dcc.RadioItems(
-                            id="ml-compare-mode",
-                            options=[
-                                {"label": "k=3", "value": "cluster_k3"},
-                                {"label": "k=2 vs k=3 stress test", "value": "cluster_k2"},
-                            ],
-                            value="cluster_k3",
-                            inline=False,
-                            labelStyle={"display": "block", "marginBottom": "6px"},
-                        ),
-                    ], md=4),
-            html.Div([
-                html.H4("Classification Report", style={"fontWeight": "700", "marginBottom": "12px"}),
                 html.Table([
                     html.Thead(html.Tr([
-                        html.Th(col) for col in report_df.columns
+                        html.Th(col, style={
+                            "padding": "12px 14px",
+                            "textAlign": "left",
+                            "fontWeight": "700",
+                            "borderBottom": f"1px solid {DIVIDER}",
+                            "color": TEXT_DARK,
+                            "background": "#F8FBFC",
+                        }) for col in report_df.columns
                     ])),
                     html.Tbody([
                         html.Tr([
-                            html.Td(report_df.iloc[i][col]) for col in report_df.columns
-                        ]) for i in range(len(report_df))
+                            html.Td(report_df.iloc[i][col], style={
+                                "padding": "12px 14px",
+                                "borderBottom": f"1px solid {DIVIDER}",
+                                "color": TEXT_DARK,
+                            }) for col in report_df.columns
+                        ], style={"background": "#FFFFFF" if i % 2 == 0 else "#FBFDFD"}) for i in range(len(report_df))
                     ])
-                ], style={"width": "100%", "fontSize": "13px", "color": TEXT_DARK, "borderCollapse": "collapse", "marginTop": "12px"})
-            ], style=CARD_STYLE),
-            ], className="g-4"),])
+                ], style={
+                    "width": "100%",
+                    "fontSize": "13px",
+                    "borderCollapse": "separate",
+                    "borderSpacing": "0",
+                    "overflow": "hidden",
+                    "borderRadius": "14px",
+                }),
+            ], style={**CARD_STYLE, "marginBottom": "24px"}),
         ])
     return html.Div([
         section_header(
@@ -1043,16 +1021,6 @@ def update_overview_tab(selected_species, islands):
         build_overview_scatter(dff, selected_species),
         build_overview_insight(dff, selected_species),
     )
-
-@app.callback(
-    Output("ml-interactive-pca", "figure"),
-    Input("ml-filter-species", "value"),
-    Input("ml-filter-island", "value"),
-    Input("ml-compare-mode", "value"),
-)
-def update_ml_interactive(species, islands, compare_mode):
-    return build_ml_interactive_figure(species, islands, compare_mode)
-
 
 @app.callback(
     Output("explorer-scatter", "figure"),
